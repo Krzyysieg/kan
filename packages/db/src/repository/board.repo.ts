@@ -270,6 +270,14 @@ export const getByPublicId = async (
                   },
                 },
               },
+              type: {
+                columns: {
+                  publicId: true,
+                  name: true,
+                  colourCode: true,
+                  icon: true,
+                },
+              },
               members: {
                 with: {
                   member: {
@@ -465,6 +473,14 @@ export const getBySlug = async (
                       colourCode: true,
                     },
                   },
+                },
+              },
+              type: {
+                columns: {
+                  publicId: true,
+                  name: true,
+                  colourCode: true,
+                  icon: true,
                 },
               },
               attachments: {

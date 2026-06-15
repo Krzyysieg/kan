@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { boards } from "./boards";
+import { cardTypes } from "./cardTypes";
 import { workspaceMemberPermissions, workspaceRoles } from "./permissions";
 import { subscription } from "./subscriptions";
 import { users } from "./users";
@@ -80,6 +81,7 @@ export const workspaceRelations = relations(workspaces, ({ one, many }) => ({
   boards: many(boards),
   subscriptions: many(subscription),
   roles: many(workspaceRoles),
+  cardTypes: many(cardTypes),
 }));
 
 export const workspaceMembers = pgTable("workspace_members", {

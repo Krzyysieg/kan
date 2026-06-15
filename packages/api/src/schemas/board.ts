@@ -21,6 +21,15 @@ export const boardListItemSchema = z.object({
   labels: z.array(labelSchema),
 });
 
+const cardTypeSchema = z
+  .object({
+    publicId: z.string(),
+    name: z.string(),
+    colourCode: z.string().nullable(),
+    icon: z.string().nullable(),
+  })
+  .nullable();
+
 // ─── Card sub-object inside board detail (byId) ─────────────
 const boardCardMemberSchema = z.object({
   publicId: z.string(),
@@ -42,6 +51,7 @@ const boardDetailCardSchema = z.object({
   cardNumber: z.number().nullable(),
   dueDate: z.date().nullable(),
   labels: z.array(labelSchema),
+  type: cardTypeSchema,
   members: z.array(boardCardMemberSchema),
   attachments: z.array(z.object({ publicId: z.string() })),
   checklists: z.array(checklistResponseSchema),
@@ -86,6 +96,7 @@ const boardSlugCardSchema = z.object({
   index: z.number(),
   dueDate: z.date().nullable(),
   labels: z.array(labelSchema),
+  type: cardTypeSchema,
   attachments: z.array(z.object({ publicId: z.string() })),
   checklists: z.array(checklistResponseSchema),
   comments: z.array(z.object({ publicId: z.string() })),

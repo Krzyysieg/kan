@@ -762,6 +762,7 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
                                                 ? `${boardData.workspace.cardPrefix}-${card.cardNumber}`
                                                 : null
                                             }
+                                            type={card.type}
                                             labels={card.labels}
                                             members={card.members}
                                             checklists={card.checklists ?? []}

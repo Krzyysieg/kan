@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   index,
@@ -14,6 +15,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { boards } from "./boards";
+import { cardLinks } from "./cardLinks";
+import { cardTypes } from "./cardTypes";
 import { checklists } from "./checklists";
 import { imports } from "./imports";
 import { labels } from "./labels";
@@ -80,9 +83,18 @@ export const cards = pgTable(
       () => imports.id,
     ),
     dueDate: timestamp("dueDate"),
+    cardTypeId: bigint("cardTypeId", { mode: "number" }).references(
+      () => cardTypes.id,
+      { onDelete: "set null" },
+    ),
+    parentCardId: bigint("parentCardId", { mode: "number" }).references(
+      (): AnyPgColumn => cards.id,
+      { onDelete: "set null" },
+    ),
   },
   (table) => [
     index("card_list_number_idx").on(table.listId, table.cardNumber),
+    index("card_parent_idx").on(table.parentCardId),
   ],
 ).enableRLS();
 
@@ -113,6 +125,25 @@ export const cardsRelations = relations(cards, ({ one, many }) => ({
   activities: many(cardActivities),
   checklists: many(checklists),
   attachments: many(cardAttachments),
+  type: one(cardTypes, {
+    fields: [cards.cardTypeId],
+    references: [cardTypes.id],
+    relationName: "cardsCardType",
+  }),
+  parent: one(cards, {
+    fields: [cards.parentCardId],
+    references: [cards.id],
+    relationName: "cardSubtasks",
+  }),
+  children: many(cards, {
+    relationName: "cardSubtasks",
+  }),
+  outgoingLinks: many(cardLinks, {
+    relationName: "cardLinkSource",
+  }),
+  incomingLinks: many(cardLinks, {
+    relationName: "cardLinkTarget",
+  }),
 }));
 
 export const cardActivities = pgTable("card_activity", {

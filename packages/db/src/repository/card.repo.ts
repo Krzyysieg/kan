@@ -17,6 +17,7 @@ import {
   cards,
   cardsToLabels,
   cardToWorkspaceMembers,
+  cardTypes,
   checklistItems,
   checklists,
   labels,
@@ -45,6 +46,7 @@ export const create = async (
     workspaceId: number;
     position: "start" | "end";
     dueDate?: Date | null;
+    parentCardId?: number | null;
   },
 ) => {
   return db.transaction(async (tx) => {
@@ -106,6 +108,7 @@ export const create = async (
         index: index,
         cardNumber,
         dueDate: cardInput.dueDate ?? null,
+        parentCardId: cardInput.parentCardId ?? null,
       })
       .returning({
         id: cards.id,
@@ -227,6 +230,71 @@ export const update = async (
     });
 
   return result;
+};
+
+export const setType = async (
+  db: dbClient,
+  args: {
+    cardPublicId: string;
+    cardTypeId: number | null;
+  },
+) => {
+  const [result] = await db
+    .update(cards)
+    .set({
+      cardTypeId: args.cardTypeId,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(cards.publicId, args.cardPublicId), isNull(cards.deletedAt)))
+    .returning({
+      id: cards.id,
+      publicId: cards.publicId,
+      cardTypeId: cards.cardTypeId,
+    });
+
+  return result;
+};
+
+export const getParentCardIdById = async (db: dbClient, cardId: number) => {
+  const result = await db.query.cards.findFirst({
+    columns: { parentCardId: true },
+    where: eq(cards.id, cardId),
+  });
+
+  return result?.parentCardId ?? null;
+};
+
+export const setParent = async (
+  db: dbClient,
+  args: {
+    cardPublicId: string;
+    parentCardId: number | null;
+  },
+) => {
+  const [result] = await db
+    .update(cards)
+    .set({
+      parentCardId: args.parentCardId,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(cards.publicId, args.cardPublicId), isNull(cards.deletedAt)))
+    .returning({
+      id: cards.id,
+      publicId: cards.publicId,
+      parentCardId: cards.parentCardId,
+    });
+
+  return result;
+};
+
+export const clearCardTypeFromCards = async (
+  db: dbClient,
+  cardTypeId: number,
+) => {
+  await db
+    .update(cards)
+    .set({ cardTypeId: null })
+    .where(eq(cards.cardTypeId, cardTypeId));
 };
 
 export const getCardWithListByPublicId = (
@@ -504,6 +572,69 @@ export const getWithListAndMembersByPublicId = async (
           },
         },
       },
+      type: {
+        columns: {
+          publicId: true,
+          name: true,
+          colourCode: true,
+          icon: true,
+        },
+      },
+      parent: {
+        columns: {
+          publicId: true,
+          title: true,
+        },
+      },
+      children: {
+        columns: {
+          publicId: true,
+          title: true,
+          cardNumber: true,
+        },
+        where: isNull(cards.deletedAt),
+        orderBy: asc(cards.index),
+        with: {
+          list: {
+            columns: {
+              publicId: true,
+              name: true,
+            },
+          },
+        },
+      },
+      outgoingLinks: {
+        columns: {
+          publicId: true,
+          type: true,
+        },
+        with: {
+          targetCard: {
+            columns: {
+              publicId: true,
+              title: true,
+              cardNumber: true,
+              deletedAt: true,
+            },
+          },
+        },
+      },
+      incomingLinks: {
+        columns: {
+          publicId: true,
+          type: true,
+        },
+        with: {
+          sourceCard: {
+            columns: {
+              publicId: true,
+              title: true,
+              cardNumber: true,
+              deletedAt: true,
+            },
+          },
+        },
+      },
       attachments: {
         columns: {
           publicId: true,
@@ -570,6 +701,16 @@ export const getWithListAndMembersByPublicId = async (
                   cardPrefix: true,
                 },
                 with: {
+                  cardTypes: {
+                    columns: {
+                      publicId: true,
+                      name: true,
+                      colourCode: true,
+                      icon: true,
+                    },
+                    where: isNull(cardTypes.deletedAt),
+                    orderBy: asc(cardTypes.name),
+                  },
                   members: {
                     columns: {
                       publicId: true,
@@ -691,13 +832,48 @@ export const getWithListAndMembersByPublicId = async (
 
   if (!card) return null;
 
+  // Flatten directed links into a single list from this card's perspective.
+  // Incoming links get the inverse relationship label.
+  const inverseRelationship = {
+    blocks: "blocked_by",
+    relates_to: "relates_to",
+    duplicates: "duplicated_by",
+  } as const;
+
+  const outgoing = card.outgoingLinks
+    .filter((link) => !link.targetCard.deletedAt)
+    .map((link) => ({
+      publicId: link.publicId,
+      relationship: link.type,
+      card: {
+        publicId: link.targetCard.publicId,
+        title: link.targetCard.title,
+        cardNumber: link.targetCard.cardNumber,
+      },
+    }));
+
+  const incoming = card.incomingLinks
+    .filter((link) => !link.sourceCard.deletedAt)
+    .map((link) => ({
+      publicId: link.publicId,
+      relationship: inverseRelationship[link.type],
+      card: {
+        publicId: link.sourceCard.publicId,
+        title: link.sourceCard.title,
+        cardNumber: link.sourceCard.cardNumber,
+      },
+    }));
+
+  const { outgoingLinks, incomingLinks, ...rest } = card;
+
   const formattedResult = {
-    ...card,
+    ...rest,
     labels: card.labels.map((label) => label.label),
     members: card.members.map((member) => member.member),
     activities: card.activities.filter(
       (activity) => !activity.comment?.deletedAt,
     ),
+    links: [...outgoing, ...incoming],
   };
 
   return formattedResult;
