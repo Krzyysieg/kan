@@ -16,7 +16,16 @@ export type dbClient = NodePgDatabase<typeof schema> & {
   $client: Pool;
 };
 
-export const createDrizzleClient = (): dbClient => {
+// Cache the client on globalThis so a single connection pool is reused across
+// requests (and survives Next.js dev HMR reloads). Creating a new Pool per
+// request forces a fresh TLS handshake to the database (~300ms to a remote
+// host like Neon) on every call and leaks connections, which makes every API
+// request slow.
+const globalForDb = globalThis as unknown as {
+  __kanDbClient?: dbClient;
+};
+
+const buildDrizzleClient = (): dbClient => {
   const connectionString = process.env.POSTGRES_URL;
 
   if (!connectionString) {
@@ -38,4 +47,8 @@ export const createDrizzleClient = (): dbClient => {
   });
 
   return drizzlePg(pool, { schema }) as dbClient;
+};
+
+export const createDrizzleClient = (): dbClient => {
+  return (globalForDb.__kanDbClient ??= buildDrizzleClient());
 };
