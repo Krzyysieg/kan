@@ -267,6 +267,13 @@
       "when": 1781524995013,
       "tag": "20260615120315_AddCardLinks",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781541875382,
+      "tag": "20260615164435_AddKnowledgeBase",
+      "breakpoints": true
     }
   ]
 }

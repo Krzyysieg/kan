@@ -180,7 +180,7 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
 
   const updateListMutation = api.list.update.useMutation({
     onMutate: async (args) => {
-      await utils.board.byId.cancel();
+      await utils.board.byId.cancel(queryParams);
 
       const currentState = utils.board.byId.getData(queryParams);
 
@@ -189,17 +189,16 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
 
         const updatedLists = Array.from(oldBoard.lists);
 
-        const sourceList = updatedLists.find(
+        // Remove by actual array position, not the (possibly stale) index field.
+        const currentIndex = updatedLists.findIndex(
           (list) => list.publicId === args.listPublicId,
         );
 
-        const currentIndex = sourceList?.index;
-
-        if (currentIndex === undefined) return oldBoard;
+        if (currentIndex === -1 || args.index === undefined) return oldBoard;
 
         const removedList = updatedLists.splice(currentIndex, 1)[0];
 
-        if (removedList && args.index !== undefined) {
+        if (removedList) {
           updatedLists.splice(args.index, 0, removedList);
 
           return {
@@ -226,43 +225,49 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
 
   const updateCardMutation = api.card.update.useMutation({
     onMutate: async (args) => {
-      await utils.board.byId.cancel();
+      await utils.board.byId.cancel(queryParams);
 
       const currentState = utils.board.byId.getData(queryParams);
 
       utils.board.byId.setData(queryParams, (oldBoard) => {
         if (!oldBoard) return oldBoard;
 
-        const updatedLists = Array.from(oldBoard.lists);
+        // Build a fully immutable copy: new lists array AND new cards arrays,
+        // so React Query and react-beautiful-dnd see a clean new state. Mutating
+        // the cached arrays in place makes the dragged card snap back to its
+        // original column until the server refetch lands.
+        const lists = oldBoard.lists.map((list) => ({
+          ...list,
+          cards: [...list.cards],
+        }));
 
-        const sourceList = updatedLists.find((list) =>
+        const sourceList = lists.find((list) =>
           list.cards.some((card) => card.publicId === args.cardPublicId),
         );
-        const destinationList = updatedLists.find(
+        const destinationList = lists.find(
           (list) => list.publicId === args.listPublicId,
         );
 
-        const cardToMove = sourceList?.cards.find(
+        if (!sourceList || !destinationList || args.index === undefined)
+          return oldBoard;
+
+        // Remove by actual array position, not the (possibly stale) index field.
+        const fromIndex = sourceList.cards.findIndex(
           (card) => card.publicId === args.cardPublicId,
         );
 
-        if (!cardToMove) return oldBoard;
+        if (fromIndex === -1) return oldBoard;
 
-        const removedCard = sourceList?.cards.splice(cardToMove.index, 1)[0];
+        const [movedCard] = sourceList.cards.splice(fromIndex, 1);
 
-        if (
-          sourceList &&
-          destinationList &&
-          removedCard &&
-          args.index !== undefined
-        ) {
-          destinationList.cards.splice(args.index, 0, removedCard);
+        if (!movedCard) return oldBoard;
 
-          return {
-            ...oldBoard,
-            lists: updatedLists,
-          };
-        }
+        destinationList.cards.splice(args.index, 0, movedCard);
+
+        return {
+          ...oldBoard,
+          lists,
+        };
       });
 
       return { previousState: currentState };

@@ -7,6 +7,7 @@ import { feedbackRouter } from "./routers/feedback";
 import { healthRouter } from "./routers/health";
 import { importRouter } from "./routers/import";
 import { integrationRouter } from "./routers/integration";
+import { knowledgeRouter } from "./routers/knowledge";
 import { labelRouter } from "./routers/label";
 import { listRouter } from "./routers/list";
 import { memberRouter } from "./routers/member";
@@ -33,6 +34,7 @@ export const appRouter = createTRPCRouter({
   webhook: webhookRouter,
   workspace: workspaceRouter,
   integration: integrationRouter,
+  knowledge: knowledgeRouter,
 });
 
 export type AppRouter = typeof appRouter;

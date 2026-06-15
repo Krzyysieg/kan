@@ -11,6 +11,7 @@ export * from "./labels";
 export * from "./lists";
 export * from "./users";
 export * from "./integrations";
+export * from "./knowledge";
 export * from "./workspaces";
 export * from "./subscriptions";
 export * from "./workspaceInviteLinks";
