@@ -13,6 +13,8 @@ import Editor from "~/components/Editor";
 import FeedbackModal from "~/components/FeedbackModal";
 import { LabelForm } from "~/components/LabelForm";
 import LabelIcon from "~/components/LabelIcon";
+import { TypeForm } from "~/components/TypeForm";
+import { DeleteCardTypeConfirmation } from "~/components/DeleteCardTypeConfirmation";
 import Modal from "~/components/modal";
 import { NewWorkspaceForm } from "~/components/NewWorkspaceForm";
 import { PageHead } from "~/components/PageHead";
@@ -28,6 +30,7 @@ import { DeleteLabelConfirmation } from "../../components/DeleteLabelConfirmatio
 import ActivityList from "./components/ActivityList";
 import { AttachmentThumbnails } from "./components/AttachmentThumbnails";
 import { AttachmentUpload } from "./components/AttachmentUpload";
+import CardLinks from "./components/CardLinks";
 import Checklists from "./components/Checklists";
 import { DeleteCardConfirmation } from "./components/DeleteCardConfirmation";
 import { DeleteChecklistConfirmation } from "./components/DeleteChecklistConfirmation";
@@ -39,6 +42,8 @@ import ListSelector from "./components/ListSelector";
 import MemberSelector from "./components/MemberSelector";
 import { NewChecklistForm } from "./components/NewChecklistForm";
 import NewCommentForm from "./components/NewCommentForm";
+import Subtasks from "./components/Subtasks";
+import TypeSelector from "./components/TypeSelector";
 
 interface FormValues {
   cardId: string;
@@ -64,9 +69,18 @@ export function CardRightPanel({ isTemplate }: { isTemplate?: boolean }) {
 
   const board = card?.list.board;
   const labels = board?.labels;
+  const cardTypes = board?.workspace.cardTypes;
   const workspaceMembers = board?.workspace.members;
   const selectedLabels = card?.labels;
   const selectedMembers = card?.members;
+
+  const formattedTypes =
+    cardTypes?.map((type) => ({
+      key: type.publicId,
+      value: type.name,
+      selected: card?.type?.publicId === type.publicId,
+      colourCode: type.colourCode,
+    })) ?? [];
 
   const formattedLabels =
     labels?.map((label) => {
@@ -125,6 +139,15 @@ export function CardRightPanel({ isTemplate }: { isTemplate?: boolean }) {
         <ListSelector
           cardPublicId={cardId ?? ""}
           lists={formattedLists}
+          isLoading={!card}
+          disabled={!canEdit}
+        />
+      </div>
+      <div className="mb-4 flex w-full flex-row">
+        <p className="my-2 mb-2 w-[100px] text-sm font-medium">{t`Type`}</p>
+        <TypeSelector
+          cardPublicId={cardId ?? ""}
+          types={formattedTypes}
           isLoading={!card}
           disabled={!canEdit}
         />
@@ -257,6 +280,21 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
     },
   });
 
+  const setCardType = api.card.setType.useMutation({
+    onError: () => {
+      showPopup({
+        header: t`Unable to set type`,
+        message: t`Please try again later, or contact customer support.`,
+        icon: "error",
+      });
+    },
+    onSettled: async () => {
+      if (cardId) {
+        await utils.card.byId.invalidate({ cardPublicId: cardId });
+      }
+    },
+  });
+
   const { register, handleSubmit, setValue, watch } = useForm<FormValues>({
     values: {
       cardId: cardId ?? "",
@@ -290,6 +328,20 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
       clearModalState("NEW_LABEL_CREATED");
     }
   }, [modalStates.NEW_LABEL_CREATED, card, cardId]);
+
+  // this assigns the newly created type to the card
+  useEffect(() => {
+    const newTypeId = modalStates.NEW_CARD_TYPE_CREATED;
+    if (newTypeId && cardId) {
+      if (card?.type?.publicId !== newTypeId) {
+        setCardType.mutate({
+          cardPublicId: cardId,
+          cardTypePublicId: newTypeId,
+        });
+      }
+      clearModalState("NEW_CARD_TYPE_CREATED");
+    }
+  }, [modalStates.NEW_CARD_TYPE_CREATED, card, cardId]);
 
   // Open the new item form after creating a new checklist
   useEffect(() => {
@@ -344,6 +396,17 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                 >
                   {board?.name}
                 </Link>
+                {card.parent && (
+                  <>
+                    <IoChevronForwardSharp className="h-[10px] w-[10px] text-light-900 dark:text-dark-900" />
+                    <Link
+                      className="max-w-[200px] truncate text-sm font-bold leading-[1.5rem] text-light-900 hover:underline dark:text-dark-950"
+                      href={`/cards/${card.parent.publicId}`}
+                    >
+                      {card.parent.title}
+                    </Link>
+                  </>
+                )}
                 {card.cardNumber != null &&
                   card.list.board.workspace.cardPrefix && (
                     <>
@@ -454,6 +517,28 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                     viewOnly={!canEdit}
                   />
                   {!isTemplate && (
+                    <Subtasks
+                      subtasks={card.children}
+                      cardPublicId={cardId}
+                      listPublicId={card.list.publicId}
+                      cardPrefix={
+                        card.list.board.workspace.cardPrefix || undefined
+                      }
+                      viewOnly={!canEdit}
+                    />
+                  )}
+                  {!isTemplate && (
+                    <CardLinks
+                      links={card.links}
+                      cardPublicId={cardId}
+                      boardPublicId={card.list.board.publicId}
+                      cardPrefix={
+                        card.list.board.workspace.cardPrefix || undefined
+                      }
+                      viewOnly={!canEdit}
+                    />
+                  )}
+                  {!isTemplate && (
                     <>
                       {card?.attachments.length > 0 && (
                         <div className="mt-6">
@@ -530,6 +615,37 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
             <DeleteLabelConfirmation
               refetch={refetchCard}
               labelPublicId={entityId}
+            />
+          </Modal>
+
+          <Modal
+            modalSize="sm"
+            isVisible={isOpen && modalContentType === "NEW_CARD_TYPE"}
+          >
+            <TypeForm
+              workspacePublicId={workspace.publicId}
+              refetch={refetchCard}
+            />
+          </Modal>
+
+          <Modal
+            modalSize="sm"
+            isVisible={isOpen && modalContentType === "EDIT_CARD_TYPE"}
+          >
+            <TypeForm
+              workspacePublicId={workspace.publicId}
+              refetch={refetchCard}
+              isEdit
+            />
+          </Modal>
+
+          <Modal
+            modalSize="sm"
+            isVisible={isOpen && modalContentType === "DELETE_CARD_TYPE"}
+          >
+            <DeleteCardTypeConfirmation
+              refetch={refetchCard}
+              cardTypePublicId={entityId}
             />
           </Modal>
 

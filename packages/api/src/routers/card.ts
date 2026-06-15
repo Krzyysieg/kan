@@ -4,6 +4,8 @@ import { z } from "zod";
 import * as cardRepo from "@kan/db/repository/card.repo";
 import * as cardActivityRepo from "@kan/db/repository/cardActivity.repo";
 import * as cardCommentRepo from "@kan/db/repository/cardComment.repo";
+import * as cardLinkRepo from "@kan/db/repository/cardLink.repo";
+import * as cardTypeRepo from "@kan/db/repository/cardType.repo";
 import * as checklistRepo from "@kan/db/repository/checklist.repo";
 import * as labelRepo from "@kan/db/repository/label.repo";
 import * as listRepo from "@kan/db/repository/list.repo";
@@ -48,6 +50,7 @@ export const cardRouter = createTRPCRouter({
         memberPublicIds: z.array(z.string().min(12)),
         position: z.enum(["start", "end"]),
         dueDate: z.date().nullable().optional(),
+        parentCardPublicId: z.string().min(12).optional(),
       }),
     )
     .output(cardCreateResponseSchema)
@@ -73,6 +76,29 @@ export const cardRouter = createTRPCRouter({
 
       await assertPermission(ctx.db, userId, list.workspaceId, "card:create");
 
+      let parentCardId: number | null = null;
+
+      if (input.parentCardPublicId) {
+        const parentCard = await cardRepo.getWorkspaceAndCardIdByCardPublicId(
+          ctx.db,
+          input.parentCardPublicId,
+        );
+
+        if (!parentCard)
+          throw new TRPCError({
+            message: `Parent card with public ID ${input.parentCardPublicId} not found`,
+            code: "NOT_FOUND",
+          });
+
+        if (parentCard.workspaceId !== list.workspaceId)
+          throw new TRPCError({
+            message: `Parent card does not belong to the same workspace`,
+            code: "BAD_REQUEST",
+          });
+
+        parentCardId = parentCard.id;
+      }
+
       const newCard = await cardRepo.create(ctx.db, {
         title: input.title,
         description: input.description,
@@ -81,6 +107,7 @@ export const cardRouter = createTRPCRouter({
         workspaceId: list.workspaceId,
         position: input.position,
         dueDate: input.dueDate ?? null,
+        parentCardId,
       });
 
       const newCardId = newCard.id;
@@ -539,6 +566,326 @@ export const cardRouter = createTRPCRouter({
       });
 
       return { newLabel: true };
+    }),
+  setType: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Set or clear the type of a card",
+        method: "PUT",
+        path: "/cards/{cardPublicId}/type",
+        description:
+          "Sets the card's type, or clears it when cardTypePublicId is null",
+        tags: ["Cards"],
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        cardPublicId: z.string().min(12),
+        cardTypePublicId: z.string().min(12).nullable(),
+      }),
+    )
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const card = await cardRepo.getWorkspaceAndCardIdByCardPublicId(
+        ctx.db,
+        input.cardPublicId,
+      );
+
+      if (!card)
+        throw new TRPCError({
+          message: `Card with public ID ${input.cardPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      await assertPermission(ctx.db, userId, card.workspaceId, "card:edit");
+
+      let cardTypeId: number | null = null;
+
+      if (input.cardTypePublicId) {
+        const cardType =
+          await cardTypeRepo.getWorkspaceAndCardTypeIdByPublicId(
+            ctx.db,
+            input.cardTypePublicId,
+          );
+
+        if (!cardType)
+          throw new TRPCError({
+            message: `Card type with public ID ${input.cardTypePublicId} not found`,
+            code: "NOT_FOUND",
+          });
+
+        if (cardType.workspaceId !== card.workspaceId)
+          throw new TRPCError({
+            message: `Card type does not belong to the card's workspace`,
+            code: "BAD_REQUEST",
+          });
+
+        cardTypeId = cardType.id;
+      }
+
+      const result = await cardRepo.setType(ctx.db, {
+        cardPublicId: input.cardPublicId,
+        cardTypeId,
+      });
+
+      if (!result)
+        throw new TRPCError({
+          message: `Failed to set card type`,
+          code: "INTERNAL_SERVER_ERROR",
+        });
+
+      return { success: true };
+    }),
+  setParent: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Set or clear the parent of a card",
+        method: "PUT",
+        path: "/cards/{cardPublicId}/parent",
+        description:
+          "Sets the card's parent (making it a sub-task), or clears it when parentCardPublicId is null",
+        tags: ["Cards"],
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        cardPublicId: z.string().min(12),
+        parentCardPublicId: z.string().min(12).nullable(),
+      }),
+    )
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const card = await cardRepo.getWorkspaceAndCardIdByCardPublicId(
+        ctx.db,
+        input.cardPublicId,
+      );
+
+      if (!card)
+        throw new TRPCError({
+          message: `Card with public ID ${input.cardPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      await assertPermission(ctx.db, userId, card.workspaceId, "card:edit");
+
+      let parentCardId: number | null = null;
+
+      if (input.parentCardPublicId) {
+        const parentCard = await cardRepo.getWorkspaceAndCardIdByCardPublicId(
+          ctx.db,
+          input.parentCardPublicId,
+        );
+
+        if (!parentCard)
+          throw new TRPCError({
+            message: `Parent card with public ID ${input.parentCardPublicId} not found`,
+            code: "NOT_FOUND",
+          });
+
+        if (parentCard.workspaceId !== card.workspaceId)
+          throw new TRPCError({
+            message: `Parent card does not belong to the same workspace`,
+            code: "BAD_REQUEST",
+          });
+
+        if (parentCard.id === card.id)
+          throw new TRPCError({
+            message: `A card cannot be its own parent`,
+            code: "BAD_REQUEST",
+          });
+
+        // Walk up the proposed parent's ancestry to reject cycles
+        let ancestorId: number | null = parentCard.id;
+        let depth = 0;
+        while (ancestorId !== null && depth < 50) {
+          if (ancestorId === card.id)
+            throw new TRPCError({
+              message: `Cannot set parent: this would create a cycle`,
+              code: "BAD_REQUEST",
+            });
+          ancestorId = await cardRepo.getParentCardIdById(ctx.db, ancestorId);
+          depth += 1;
+        }
+
+        parentCardId = parentCard.id;
+      }
+
+      const result = await cardRepo.setParent(ctx.db, {
+        cardPublicId: input.cardPublicId,
+        parentCardId,
+      });
+
+      if (!result)
+        throw new TRPCError({
+          message: `Failed to set card parent`,
+          code: "INTERNAL_SERVER_ERROR",
+        });
+
+      return { success: true };
+    }),
+  linkCard: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Link two cards",
+        method: "POST",
+        path: "/cards/{cardPublicId}/links",
+        description:
+          "Creates a relationship between two cards (blocks, relates to, duplicates, and their inverses)",
+        tags: ["Cards"],
+        protect: true,
+      },
+    })
+    .input(
+      z.object({
+        cardPublicId: z.string().min(12),
+        targetCardPublicId: z.string().min(12),
+        relationship: z.enum([
+          "blocks",
+          "blocked_by",
+          "relates_to",
+          "duplicates",
+          "duplicated_by",
+        ]),
+      }),
+    )
+    .output(z.object({ publicId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const card = await cardRepo.getWorkspaceAndCardIdByCardPublicId(
+        ctx.db,
+        input.cardPublicId,
+      );
+
+      if (!card)
+        throw new TRPCError({
+          message: `Card with public ID ${input.cardPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      await assertPermission(ctx.db, userId, card.workspaceId, "card:edit");
+
+      if (input.targetCardPublicId === input.cardPublicId)
+        throw new TRPCError({
+          message: `A card cannot be linked to itself`,
+          code: "BAD_REQUEST",
+        });
+
+      const target = await cardRepo.getWorkspaceAndCardIdByCardPublicId(
+        ctx.db,
+        input.targetCardPublicId,
+      );
+
+      if (!target)
+        throw new TRPCError({
+          message: `Card with public ID ${input.targetCardPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      if (target.workspaceId !== card.workspaceId)
+        throw new TRPCError({
+          message: `Cards must belong to the same workspace`,
+          code: "BAD_REQUEST",
+        });
+
+      // Normalise the directed relationship into a canonical stored type.
+      const reversed =
+        input.relationship === "blocked_by" ||
+        input.relationship === "duplicated_by";
+      const sourceCardId = reversed ? target.id : card.id;
+      const targetCardId = reversed ? card.id : target.id;
+      const type =
+        input.relationship === "blocked_by"
+          ? ("blocks" as const)
+          : input.relationship === "duplicated_by"
+            ? ("duplicates" as const)
+            : input.relationship;
+
+      const existing = await cardLinkRepo.getExisting(ctx.db, {
+        sourceCardId,
+        targetCardId,
+        type,
+      });
+
+      if (existing) return { publicId: existing.publicId };
+
+      const result = await cardLinkRepo.create(ctx.db, {
+        sourceCardId,
+        targetCardId,
+        type,
+        createdBy: userId,
+      });
+
+      if (!result)
+        throw new TRPCError({
+          message: `Failed to link cards`,
+          code: "INTERNAL_SERVER_ERROR",
+        });
+
+      return { publicId: result.publicId };
+    }),
+  unlinkCard: protectedProcedure
+    .meta({
+      openapi: {
+        summary: "Remove a link between cards",
+        method: "DELETE",
+        path: "/cards/links/{cardLinkPublicId}",
+        description: "Deletes a card relationship by its public ID",
+        tags: ["Cards"],
+        protect: true,
+      },
+    })
+    .input(z.object({ cardLinkPublicId: z.string().min(12) }))
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.user?.id;
+
+      if (!userId)
+        throw new TRPCError({
+          message: `User not authenticated`,
+          code: "UNAUTHORIZED",
+        });
+
+      const link = await cardLinkRepo.getWorkspaceAndLinkIdByPublicId(
+        ctx.db,
+        input.cardLinkPublicId,
+      );
+
+      if (!link)
+        throw new TRPCError({
+          message: `Card link with public ID ${input.cardLinkPublicId} not found`,
+          code: "NOT_FOUND",
+        });
+
+      await assertPermission(ctx.db, userId, link.workspaceId, "card:edit");
+
+      await cardLinkRepo.deleteByPublicId(ctx.db, input.cardLinkPublicId);
+
+      return { success: true };
     }),
   addOrRemoveMember: protectedProcedure
     .meta({

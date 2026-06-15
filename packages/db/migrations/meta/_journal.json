@@ -246,6 +246,27 @@
       "when": 1780057951781,
       "tag": "20260529123231_DropPartnerLicenseKeyUniqueConstraint",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781521767626,
+      "tag": "20260615110927_AddCardTypes",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781523587535,
+      "tag": "20260615113947_AddSubtasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781524995013,
+      "tag": "20260615120315_AddCardLinks",
+      "breakpoints": true
     }
   ]
 }

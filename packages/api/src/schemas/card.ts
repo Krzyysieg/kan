@@ -51,6 +51,48 @@ export const cardDetailSchema = z.object({
   dueDate: z.date().nullable(),
   createdBy: z.string().nullable(),
   labels: z.array(labelSchema),
+  type: z
+    .object({
+      publicId: z.string(),
+      name: z.string(),
+      colourCode: z.string().nullable(),
+      icon: z.string().nullable(),
+    })
+    .nullable(),
+  parent: z
+    .object({
+      publicId: z.string(),
+      title: z.string(),
+    })
+    .nullable(),
+  children: z.array(
+    z.object({
+      publicId: z.string(),
+      title: z.string(),
+      cardNumber: z.number().nullable(),
+      list: z.object({
+        publicId: z.string(),
+        name: z.string(),
+      }),
+    }),
+  ),
+  links: z.array(
+    z.object({
+      publicId: z.string(),
+      relationship: z.enum([
+        "blocks",
+        "blocked_by",
+        "relates_to",
+        "duplicates",
+        "duplicated_by",
+      ]),
+      card: z.object({
+        publicId: z.string(),
+        title: z.string(),
+        cardNumber: z.number().nullable(),
+      }),
+    }),
+  ),
   attachments: z.array(
     z.object({
       publicId: z.string(),
@@ -78,6 +120,14 @@ export const cardDetailSchema = z.object({
       workspace: z.object({
         publicId: z.string(),
         cardPrefix: z.string(),
+        cardTypes: z.array(
+          z.object({
+            publicId: z.string(),
+            name: z.string(),
+            colourCode: z.string().nullable(),
+            icon: z.string().nullable(),
+          }),
+        ),
         members: z.array(workspaceMemberSchema),
       }),
     }),

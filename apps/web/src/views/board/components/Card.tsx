@@ -17,6 +17,7 @@ import { getAvatarUrl } from "~/utils/helpers";
 const Card = ({
   title,
   ticketNumber,
+  type,
   labels,
   members,
   checklists,
@@ -27,6 +28,7 @@ const Card = ({
 }: {
   title: string;
   ticketNumber?: string | null;
+  type?: { name: string; colourCode: string | null } | null;
   labels: { name: string; colourCode: string | null }[];
   members: {
     publicId: string;
@@ -69,10 +71,27 @@ const Card = ({
 
   return (
     <div className="flex flex-col overflow-hidden rounded-md border border-light-200 bg-light-50 px-3 py-2 text-sm text-neutral-900 dark:border-dark-200 dark:bg-dark-200 dark:text-dark-1000 dark:hover:bg-dark-300">
-      {ticketNumber && (
-        <span className="mb-1 text-xs text-light-700 dark:text-dark-800">
-          {ticketNumber}
-        </span>
+      {(ticketNumber || type) && (
+        <div className="mb-1 flex items-center gap-2">
+          {ticketNumber && (
+            <span className="text-xs text-light-700 dark:text-dark-800">
+              {ticketNumber}
+            </span>
+          )}
+          {type && (
+            <span
+              className="inline-flex w-fit items-center gap-x-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 ring-1 ring-inset ring-light-600 dark:text-dark-1000 dark:ring-dark-800"
+              style={
+                type.colourCode
+                  ? { color: type.colourCode, borderColor: type.colourCode }
+                  : undefined
+              }
+            >
+              <LabelIcon colourCode={type.colourCode} />
+              {type.name}
+            </span>
+          )}
+        </div>
       )}
       <span className="break-words">{title}</span>
       {labels.length ||
