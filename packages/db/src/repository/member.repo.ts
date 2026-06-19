@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, ne, or } from "drizzle-orm";
+import { and, count, eq, isNull, ne, or, sql } from "drizzle-orm";
 
 import type { dbClient } from "@kan/db/client";
 import type { MemberRole, MemberStatus } from "@kan/db/schema";
@@ -126,6 +126,28 @@ export const getByEmailAndStatus = async (
       isNull(workspaceMembers.deletedAt),
     ),
   });
+};
+
+// Links every pending invitation matching an email to a user account and
+// activates them. Used so invited members are accepted on sign-up regardless
+// of the auth method (password or magic link), not only the magic-link flow.
+export const linkInvitedMembershipsByEmail = async (
+  db: dbClient,
+  email: string,
+  userId: string,
+) => {
+  return db
+    .update(workspaceMembers)
+    .set({ status: "active", userId })
+    .where(
+      and(
+        sql`lower(${workspaceMembers.email}) = lower(${email})`,
+        isNull(workspaceMembers.userId),
+        eq(workspaceMembers.status, "invited"),
+        isNull(workspaceMembers.deletedAt),
+      ),
+    )
+    .returning({ id: workspaceMembers.id });
 };
 
 export const acceptInvite = async (

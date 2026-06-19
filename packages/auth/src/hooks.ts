@@ -56,6 +56,29 @@ export function createDatabaseHooks(db: dbClient) {
           return Promise.resolve(true);
         },
         async after(user: BetterAuthUser, _context: unknown) {
+          // Accept any pending workspace invitations for this email so invited
+          // members land in their workspace instead of the create-workspace
+          // onboarding — regardless of whether they signed up with a password
+          // or a magic link.
+          try {
+            const linked = await memberRepo.linkInvitedMembershipsByEmail(
+              db,
+              user.email,
+              user.id,
+            );
+            if (linked.length) {
+              log.info(
+                { userId: user.id, linked: linked.length },
+                "Linked pending workspace invitations on sign-up",
+              );
+            }
+          } catch (error) {
+            log.error(
+              { err: error, userId: user.id },
+              "Failed to link pending workspace invitations",
+            );
+          }
+
           let avatarKey = user.image;
           const storageDomain = process.env.NEXT_PUBLIC_STORAGE_DOMAIN;
           if (
