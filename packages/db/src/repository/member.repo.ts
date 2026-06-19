@@ -142,7 +142,6 @@ export const linkInvitedMembershipsByEmail = async (
     .where(
       and(
         sql`lower(${workspaceMembers.email}) = lower(${email})`,
-        isNull(workspaceMembers.userId),
         eq(workspaceMembers.status, "invited"),
         isNull(workspaceMembers.deletedAt),
       ),

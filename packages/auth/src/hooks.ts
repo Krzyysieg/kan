@@ -1,11 +1,13 @@
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { ChatOrPushProviderEnum } from "@novu/api/models/components";
 import { createAuthMiddleware } from "better-auth/api";
+import { eq } from "drizzle-orm";
 import { env } from "next-runtime-env";
 
 import type { dbClient } from "@kan/db/client";
 import * as memberRepo from "@kan/db/repository/member.repo";
 import * as userRepo from "@kan/db/repository/user.repo";
+import { users } from "@kan/db/schema";
 import { notificationClient } from "@kan/email";
 import { createLogger } from "@kan/logger";
 import { createEmailUnsubscribeLink, createS3Client } from "@kan/shared";
@@ -164,6 +166,39 @@ export function createDatabaseHooks(db: dbClient) {
             } catch (error) {
               log.error({ err: error }, "Error adding user to notification client");
             }
+          }
+        },
+      },
+    },
+    session: {
+      create: {
+        // On every sign-in, accept any pending workspace invitations for the
+        // user's email. This covers people who already had an account when they
+        // were invited (the sign-up hook only fires for brand-new accounts).
+        async after(session: { userId: string }) {
+          try {
+            const user = await db.query.users.findFirst({
+              columns: { email: true },
+              where: eq(users.id, session.userId),
+            });
+            if (user?.email) {
+              const linked = await memberRepo.linkInvitedMembershipsByEmail(
+                db,
+                user.email,
+                session.userId,
+              );
+              if (linked.length) {
+                log.info(
+                  { userId: session.userId, linked: linked.length },
+                  "Activated pending workspace invitations on sign-in",
+                );
+              }
+            }
+          } catch (error) {
+            log.error(
+              { err: error, userId: session.userId },
+              "Failed to activate pending workspace invitations on sign-in",
+            );
           }
         },
       },
