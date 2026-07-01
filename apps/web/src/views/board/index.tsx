@@ -768,6 +768,8 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
                                                 : null
                                             }
                                             type={card.type}
+                                            isSubtask={card.isSubtask}
+                                            parent={card.parent}
                                             labels={card.labels}
                                             members={card.members}
                                             checklists={card.checklists ?? []}

@@ -52,6 +52,14 @@ const boardDetailCardSchema = z.object({
   dueDate: z.date().nullable(),
   labels: z.array(labelSchema),
   type: cardTypeSchema,
+  isSubtask: z.boolean(),
+  parent: z
+    .object({
+      publicId: z.string(),
+      title: z.string(),
+      cardNumber: z.number().nullable(),
+    })
+    .nullable(),
   members: z.array(boardCardMemberSchema),
   attachments: z.array(z.object({ publicId: z.string() })),
   checklists: z.array(checklistResponseSchema),
@@ -97,6 +105,14 @@ const boardSlugCardSchema = z.object({
   dueDate: z.date().nullable(),
   labels: z.array(labelSchema),
   type: cardTypeSchema,
+  isSubtask: z.boolean(),
+  parent: z
+    .object({
+      publicId: z.string(),
+      title: z.string(),
+      cardNumber: z.number().nullable(),
+    })
+    .nullable(),
   attachments: z.array(z.object({ publicId: z.string() })),
   checklists: z.array(checklistResponseSchema),
   comments: z.array(z.object({ publicId: z.string() })),

@@ -257,6 +257,7 @@ export const getByPublicId = async (
               index: true,
               dueDate: true,
               cardNumber: true,
+              parentCardId: true,
             },
             with: {
               labels: {
@@ -276,6 +277,13 @@ export const getByPublicId = async (
                   name: true,
                   colourCode: true,
                   icon: true,
+                },
+              },
+              parent: {
+                columns: {
+                  publicId: true,
+                  title: true,
+                  cardNumber: true,
                 },
               },
               members: {
@@ -375,8 +383,9 @@ export const getByPublicId = async (
     userFavorites: undefined,
     lists: board.lists.map((list) => ({
       ...list,
-      cards: list.cards.map((card) => ({
+      cards: list.cards.map(({ parentCardId, ...card }) => ({
         ...card,
+        isSubtask: parentCardId !== null,
         labels: card.labels.map((label) => label.label),
         members: card.members
           .map((member) => member.member)
@@ -462,6 +471,7 @@ export const getBySlug = async (
               index: true,
               dueDate: true,
               cardNumber: true,
+              parentCardId: true,
             },
             with: {
               labels: {
@@ -481,6 +491,13 @@ export const getBySlug = async (
                   name: true,
                   colourCode: true,
                   icon: true,
+                },
+              },
+              parent: {
+                columns: {
+                  publicId: true,
+                  title: true,
+                  cardNumber: true,
                 },
               },
               attachments: {
@@ -558,8 +575,9 @@ export const getBySlug = async (
     ...board,
     lists: board.lists.map((list) => ({
       ...list,
-      cards: list.cards.map((card) => ({
+      cards: list.cards.map(({ parentCardId, ...card }) => ({
         ...card,
+        isSubtask: parentCardId !== null,
         labels: card.labels.map((label) => label.label),
       })),
     })),

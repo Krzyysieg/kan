@@ -3,6 +3,7 @@ import { HiOutlinePaperClip } from "react-icons/hi";
 import {
   HiBars3BottomLeft,
   HiChatBubbleLeft,
+  HiOutlineArrowUturnUp,
   HiOutlineClock,
 } from "react-icons/hi2";
 import { twMerge } from "tailwind-merge";
@@ -18,6 +19,8 @@ const Card = ({
   title,
   ticketNumber,
   type,
+  isSubtask,
+  parent,
   labels,
   members,
   checklists,
@@ -29,6 +32,8 @@ const Card = ({
   title: string;
   ticketNumber?: string | null;
   type?: { name: string; colourCode: string | null } | null;
+  isSubtask?: boolean;
+  parent?: { publicId: string; title: string; cardNumber: number | null } | null;
   labels: { name: string; colourCode: string | null }[];
   members: {
     publicId: string;
@@ -93,7 +98,15 @@ const Card = ({
           )}
         </div>
       )}
-      <span className="break-words">{title}</span>
+      <span className={`break-words ${isSubtask ? "italic" : ""}`}>
+        {title}
+      </span>
+      {parent && (
+        <span className="mt-1 inline-flex w-fit max-w-full items-center gap-x-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-light-700 ring-1 ring-inset ring-light-400 dark:text-dark-800 dark:ring-dark-500">
+          <HiOutlineArrowUturnUp className="h-3 w-3 flex-shrink-0" />
+          <span className="truncate">{parent.title}</span>
+        </span>
+      )}
       {labels.length ||
       members.length ||
       checklists.length > 0 ||

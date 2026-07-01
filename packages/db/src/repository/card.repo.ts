@@ -1072,44 +1072,54 @@ export const softDelete = async (
   },
 ) => {
   return db.transaction(async (tx) => {
-    const [result] = await tx
-      .update(cards)
-      .set({ deletedAt: args.deletedAt, deletedBy: args.deletedBy })
-      .where(eq(cards.id, args.cardId))
-      .returning({
-        id: cards.id,
-        listId: cards.listId,
-        index: cards.index,
-      });
-
-    if (!result)
-      throw new Error(`Unable to soft delete card ID ${args.cardId}`);
-
-    await tx.execute(sql`
-      UPDATE card
-      SET index = index - 1
-      WHERE "listId" = ${result.listId} AND index > ${result.index} AND "deletedAt" IS NULL;
+    // Collect the card plus all of its sub-task descendants (any depth) so
+    // deleting a card also deletes its sub-tasks.
+    const subtree = await tx.execute(sql`
+      WITH RECURSIVE subtree AS (
+        SELECT id, "listId"
+        FROM card
+        WHERE id = ${args.cardId} AND "deletedAt" IS NULL
+        UNION ALL
+        SELECT c.id, c."listId"
+        FROM card c
+        INNER JOIN subtree s ON c."parentCardId" = s.id
+        WHERE c."deletedAt" IS NULL
+      )
+      SELECT id, "listId" FROM subtree;
     `);
 
-    const countExpr = sql<number>`COUNT(*)`.mapWith(Number);
+    const rows =
+      (subtree as unknown as { rows: { id: number; listId: number }[] }).rows ??
+      [];
 
-    const duplicateIndices = await tx
-      .select({
-        index: cards.index,
-        count: countExpr,
-      })
-      .from(cards)
-      .where(and(eq(cards.listId, result.listId), isNull(cards.deletedAt)))
-      .groupBy(cards.listId, cards.index)
-      .having(gt(countExpr, 1));
+    if (rows.length === 0)
+      throw new Error(`Unable to soft delete card ID ${args.cardId}`);
 
-    if (duplicateIndices.length > 0) {
-      throw new Error(
-        `Duplicate indices found after soft deleting ${result.id}`,
-      );
+    const ids = rows.map((r) => r.id);
+    const affectedListIds = [...new Set(rows.map((r) => r.listId))];
+
+    await tx
+      .update(cards)
+      .set({ deletedAt: args.deletedAt, deletedBy: args.deletedBy })
+      .where(and(inArray(cards.id, ids), isNull(cards.deletedAt)));
+
+    // Recompact indices for every affected list so positions stay 0..n-1
+    // (a card and its sub-tasks may span multiple lists).
+    for (const listId of affectedListIds) {
+      await tx.execute(sql`
+        WITH ordered AS (
+          SELECT id, ROW_NUMBER() OVER (ORDER BY "index", id) - 1 AS new_index
+          FROM "card"
+          WHERE "listId" = ${listId} AND "deletedAt" IS NULL
+        )
+        UPDATE "card" c
+        SET "index" = o.new_index
+        FROM ordered o
+        WHERE c.id = o.id;
+      `);
     }
 
-    return result;
+    return { id: args.cardId, deletedCount: ids.length };
   });
 };
 
