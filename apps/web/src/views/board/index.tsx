@@ -736,7 +736,7 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
                                       key={card.publicId}
                                       draggableId={card.publicId}
                                       index={index}
-                                      isDragDisabled={!canEditCard || card.isSubtask}
+                                      isDragDisabled={!canEditCard}
                                     >
                                       {(provided) => (
                                         <Link
