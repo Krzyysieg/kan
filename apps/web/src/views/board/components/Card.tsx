@@ -75,7 +75,13 @@ const Card = ({
   const hasDueDate = !!dueDate;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-md border border-light-200 bg-light-50 px-3 py-2 text-sm text-neutral-900 dark:border-dark-200 dark:bg-dark-200 dark:text-dark-1000 dark:hover:bg-dark-300">
+    <div
+      className={`flex flex-col overflow-hidden rounded-md border border-light-200 bg-light-50 px-3 py-2 text-sm text-neutral-900 dark:border-dark-200 dark:bg-dark-200 dark:text-dark-1000 dark:hover:bg-dark-300 ${
+        isSubtask
+          ? "ml-5 border-l-2 border-l-light-500 dark:border-l-dark-500"
+          : ""
+      }`}
+    >
       {(ticketNumber || type) && (
         <div className="mb-1 flex items-center gap-2">
           {ticketNumber && (
@@ -98,9 +104,7 @@ const Card = ({
           )}
         </div>
       )}
-      <span className={`break-words ${isSubtask ? "italic" : ""}`}>
-        {title}
-      </span>
+      <span className="break-words">{title}</span>
       {parent && (
         <span className="mt-1 inline-flex w-fit max-w-full items-center gap-x-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium text-light-700 ring-1 ring-inset ring-light-400 dark:text-dark-800 dark:ring-dark-500">
           <HiOutlineArrowUturnUp className="h-3 w-3 flex-shrink-0" />
