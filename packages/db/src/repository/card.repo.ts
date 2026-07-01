@@ -264,6 +264,74 @@ export const getParentCardIdById = async (db: dbClient, cardId: number) => {
   return result?.parentCardId ?? null;
 };
 
+export const hasChildren = async (db: dbClient, cardId: number) => {
+  const child = await db.query.cards.findFirst({
+    columns: { id: true },
+    where: and(eq(cards.parentCardId, cardId), isNull(cards.deletedAt)),
+  });
+
+  return !!child;
+};
+
+/**
+ * Reorders a list so each sub-task sits immediately after its parent, keeping
+ * the board tidy. Relative order of top-level cards is preserved; sub-tasks
+ * whose parent is not in this list are treated as standalone.
+ */
+export const normalizeListOrder = async (db: dbClient, listId: number) => {
+  const listCards = await db
+    .select({
+      id: cards.id,
+      parentCardId: cards.parentCardId,
+    })
+    .from(cards)
+    .where(and(eq(cards.listId, listId), isNull(cards.deletedAt)))
+    .orderBy(asc(cards.index), asc(cards.id));
+
+  if (listCards.length === 0) return;
+
+  const inList = new Set(listCards.map((c) => c.id));
+  const childrenByParent = new Map<number, number[]>();
+  const anchors: number[] = [];
+
+  for (const c of listCards) {
+    if (c.parentCardId !== null && inList.has(c.parentCardId)) {
+      const existing = childrenByParent.get(c.parentCardId);
+      if (existing) existing.push(c.id);
+      else childrenByParent.set(c.parentCardId, [c.id]);
+    } else {
+      anchors.push(c.id);
+    }
+  }
+
+  const ordered: number[] = [];
+  const seen = new Set<number>();
+  const push = (id: number) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ordered.push(id);
+    }
+  };
+  for (const anchorId of anchors) {
+    push(anchorId);
+    for (const childId of childrenByParent.get(anchorId) ?? []) push(childId);
+  }
+  // Safety net: append anything not captured (e.g. pre-existing deep nesting).
+  for (const c of listCards) push(c.id);
+
+  // Nothing to do if already in order.
+  const alreadyOrdered = ordered.every((id, i) => listCards[i]?.id === id);
+  if (alreadyOrdered) return;
+
+  const values = ordered.map((id, i) => sql`(${id}::bigint, ${i}::int)`);
+  await db.execute(sql`
+    UPDATE "card" AS c
+    SET "index" = v.new_index
+    FROM (VALUES ${sql.join(values, sql`, `)}) AS v(id, new_index)
+    WHERE c.id = v.id;
+  `);
+};
+
 export const setParent = async (
   db: dbClient,
   args: {
@@ -946,6 +1014,22 @@ export const reorder = async (
       newIndex = lastCardIndex !== undefined ? lastCardIndex + 1 : 0;
     }
 
+    // When moving a card to a different list, its sub-tasks that live in the
+    // same (source) list should travel with it.
+    const isCrossListMove = !!newList && newList.id !== currentList.id;
+    const childCards = isCrossListMove
+      ? await tx.query.cards.findMany({
+          columns: { id: true },
+          where: and(
+            eq(cards.parentCardId, args.cardId),
+            eq(cards.listId, currentList.id),
+            isNull(cards.deletedAt),
+          ),
+          orderBy: asc(cards.index),
+        })
+      : [];
+    const childIds = childCards.map((c) => c.id);
+
     if (currentList.id === newList?.id) {
       await tx.execute(sql`
         UPDATE card
@@ -959,22 +1043,42 @@ export const reorder = async (
         WHERE "listId" = ${currentList.id} AND "deletedAt" IS NULL;
       `);
     } else {
+      const groupCount = 1 + childIds.length;
+
+      // Make room in the target list for the parent plus its sub-tasks.
       await tx.execute(sql`
         UPDATE card
-        SET index = index + 1
+        SET index = index + ${groupCount}
         WHERE "listId" = ${newList?.id} AND index >= ${newIndex} AND "deletedAt" IS NULL;
       `);
 
-      await tx.execute(sql`
-        UPDATE card
-        SET index = index - 1
-        WHERE "listId" = ${currentList.id} AND index >= ${currentIndex} AND "deletedAt" IS NULL;
-      `);
-
+      // Place the parent at the drop position.
       await tx.execute(sql`
         UPDATE card
         SET "listId" = ${newList?.id}, index = ${newIndex}
         WHERE id = ${card.id} AND "deletedAt" IS NULL;
+      `);
+
+      // Place its sub-tasks immediately after it, preserving their order.
+      for (let i = 0; i < childIds.length; i++) {
+        await tx.execute(sql`
+          UPDATE card
+          SET "listId" = ${newList?.id}, index = ${newIndex + 1 + i}
+          WHERE id = ${childIds[i]} AND "deletedAt" IS NULL;
+        `);
+      }
+
+      // Compact the source list to close the gaps left by the moved group.
+      await tx.execute(sql`
+        WITH ordered AS (
+          SELECT id, ROW_NUMBER() OVER (ORDER BY "index", id) - 1 AS new_index
+          FROM "card"
+          WHERE "listId" = ${currentList.id} AND "deletedAt" IS NULL
+        )
+        UPDATE "card" c
+        SET "index" = o.new_index
+        FROM ordered o
+        WHERE c.id = o.id;
       `);
     }
 

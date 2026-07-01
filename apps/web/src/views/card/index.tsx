@@ -516,7 +516,7 @@ export default function CardPage({ isTemplate }: { isTemplate?: boolean }) {
                     setActiveChecklistForm={setActiveChecklistForm}
                     viewOnly={!canEdit}
                   />
-                  {!isTemplate && (
+                  {!isTemplate && !card.parent && (
                     <Subtasks
                       subtasks={card.children}
                       cardPublicId={cardId}

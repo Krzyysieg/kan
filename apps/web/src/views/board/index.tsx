@@ -258,11 +258,32 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
 
         if (fromIndex === -1) return oldBoard;
 
+        const isCrossListMove = sourceList.publicId !== destinationList.publicId;
+
+        // On a cross-list move, sub-tasks in the same source list travel with
+        // the parent (mirrors the server behaviour).
+        const childPublicIds = isCrossListMove
+          ? sourceList.cards
+              .filter((card) => card.parent?.publicId === args.cardPublicId)
+              .map((card) => card.publicId)
+          : [];
+
         const [movedCard] = sourceList.cards.splice(fromIndex, 1);
 
         if (!movedCard) return oldBoard;
 
-        destinationList.cards.splice(args.index, 0, movedCard);
+        const movedChildren = [] as typeof sourceList.cards;
+        for (const childPublicId of childPublicIds) {
+          const childIndex = sourceList.cards.findIndex(
+            (card) => card.publicId === childPublicId,
+          );
+          if (childIndex !== -1) {
+            const [child] = sourceList.cards.splice(childIndex, 1);
+            if (child) movedChildren.push(child);
+          }
+        }
+
+        destinationList.cards.splice(args.index, 0, movedCard, ...movedChildren);
 
         return {
           ...oldBoard,
@@ -715,7 +736,7 @@ export default function BoardPage({ isTemplate }: { isTemplate?: boolean }) {
                                       key={card.publicId}
                                       draggableId={card.publicId}
                                       index={index}
-                                      isDragDisabled={!canEditCard}
+                                      isDragDisabled={!canEditCard || card.isSubtask}
                                     >
                                       {(provided) => (
                                         <Link

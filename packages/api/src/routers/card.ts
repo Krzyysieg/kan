@@ -96,6 +96,17 @@ export const cardRouter = createTRPCRouter({
             code: "BAD_REQUEST",
           });
 
+        // Sub-tasks cannot themselves have sub-tasks (single level of nesting).
+        const parentsParent = await cardRepo.getParentCardIdById(
+          ctx.db,
+          parentCard.id,
+        );
+        if (parentsParent !== null)
+          throw new TRPCError({
+            message: `A sub-task cannot have its own sub-tasks`,
+            code: "BAD_REQUEST",
+          });
+
         parentCardId = parentCard.id;
       }
 
@@ -193,6 +204,11 @@ export const cardRouter = createTRPCRouter({
         }));
 
         await cardActivityRepo.bulkCreate(ctx.db, cardActivitesInsert);
+      }
+
+      // Keep sub-tasks grouped directly under their parent in the list.
+      if (parentCardId !== null) {
+        await cardRepo.normalizeListOrder(ctx.db, list.id);
       }
 
       if (input.description) {
@@ -712,18 +728,24 @@ export const cardRouter = createTRPCRouter({
             code: "BAD_REQUEST",
           });
 
-        // Walk up the proposed parent's ancestry to reject cycles
-        let ancestorId: number | null = parentCard.id;
-        let depth = 0;
-        while (ancestorId !== null && depth < 50) {
-          if (ancestorId === card.id)
-            throw new TRPCError({
-              message: `Cannot set parent: this would create a cycle`,
-              code: "BAD_REQUEST",
-            });
-          ancestorId = await cardRepo.getParentCardIdById(ctx.db, ancestorId);
-          depth += 1;
-        }
+        // Single level of nesting: the proposed parent must not itself be a
+        // sub-task, and the card being nested must not already have sub-tasks.
+        const parentsParent = await cardRepo.getParentCardIdById(
+          ctx.db,
+          parentCard.id,
+        );
+        if (parentsParent !== null)
+          throw new TRPCError({
+            message: `A sub-task cannot have its own sub-tasks`,
+            code: "BAD_REQUEST",
+          });
+
+        const cardHasChildren = await cardRepo.hasChildren(ctx.db, card.id);
+        if (cardHasChildren)
+          throw new TRPCError({
+            message: `A card with sub-tasks cannot become a sub-task`,
+            code: "BAD_REQUEST",
+          });
 
         parentCardId = parentCard.id;
       }
@@ -1299,6 +1321,13 @@ export const cardRouter = createTRPCRouter({
           newIndex: input.index,
           newListId: newListId,
         });
+
+        // Keep sub-tasks grouped under their parent in the affected lists.
+        const listsToNormalize = new Set<number>([existingCard.listId]);
+        if (newListId !== undefined) listsToNormalize.add(newListId);
+        for (const normalizeListId of listsToNormalize) {
+          await cardRepo.normalizeListOrder(ctx.db, normalizeListId);
+        }
       }
 
       if (!result)
